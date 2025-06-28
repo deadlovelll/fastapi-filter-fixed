@@ -111,7 +111,7 @@ class Filter(BaseFilterModel):
     def _handle_nested_filter(
         self, 
         field_name: str, 
-        field_value: Filter, 
+        field_value, 
         nesting_depth: int,
     ) -> list[tuple[Mapping[str, Any], Mapping[str, Any]]]:
         
