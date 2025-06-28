@@ -4,7 +4,7 @@ from collections.abc import Iterable
 from copy import deepcopy
 from typing import Any, Optional, Union, get_args, get_origin
 
-from fastapi import Depends, Querygit 
+from fastapi import Depends, Query
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, ConfigDict, ValidationError, ValidationInfo, create_model, field_validator
 from pydantic.fields import FieldInfo
