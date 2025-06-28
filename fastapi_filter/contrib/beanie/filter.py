@@ -52,12 +52,16 @@ class Filter(BaseFilterModel):
         if not self.ordering_values:
             return query
         return query.sort(*self.ordering_values)
-
+    
     @field_validator("*", mode="before")
     @classmethod
     def split_str(
         cls: type["BaseFilterModel"], value: Optional[str], field: ValidationInfo
     ) -> Optional[Union[list[str], str]]:
+        
+        if isinstance(value, list):
+            return value
+
         if (
             field.field_name is not None
             and (
@@ -68,9 +72,9 @@ class Filter(BaseFilterModel):
             and isinstance(value, str)
         ):
             if not value:
-                # Empty string should return [] not ['']
                 return []
-            return list(value.split(","))
+            return value.split(",")
+
         return value
 
     def _get_filter_conditions(self, nesting_depth: int = 1) -> list[tuple[Mapping[str, Any], Mapping[str, Any]]]:
@@ -99,20 +103,17 @@ class Filter(BaseFilterModel):
             elif "__" in field_name:
                 stripped_field_name, operator = field_name.split("__")
                 search_criteria = _odm_operator_transformer[operator](value)
-                filter_conditions.append(({stripped_field_name: search_criteria}, {}))
+                filter_conditions.append(({stripped_field_name: search_criteria}))
             elif field_name == self.Constants.search_field_name and hasattr(self.Constants, "search_model_fields"):
                 search_conditions = [
                     {search_field: _odm_operator_transformer["ilike"](value)}
                     for search_field in self.Constants.search_model_fields
                 ]
-                filter_conditions.append(({"$or": search_conditions}, {}))
+                filter_conditions.append(({"$or": search_conditions}))
             else:
-                filter_conditions.append(({field_name: value}, {}))
-
+                filter_conditions.append(({field_name: value}))
         return filter_conditions
 
-    def filter(self, query: FindMany[FindType]) -> FindMany[FindType]:
+    def get(self) -> Any:
         data = self._get_filter_conditions()
-        for filter_condition, filter_kwargs in data:
-            query = query.find(filter_condition, **filter_kwargs)
-        return query.find(fetch_links=True)
+        return data
