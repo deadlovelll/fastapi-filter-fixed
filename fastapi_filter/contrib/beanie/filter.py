@@ -77,42 +77,104 @@ class Filter(BaseFilterModel):
 
         return value
 
-    def _get_filter_conditions(self, nesting_depth: int = 1) -> list[tuple[Mapping[str, Any], Mapping[str, Any]]]:
-        filter_conditions: list[tuple[Mapping[str, Any], Mapping[str, Any]]] = []
+    def _get_filter_conditions(
+        self, 
+        nesting_depth: int = 1,
+    ) -> list[tuple[Mapping[str, Any]]]:
+        
+        conditions: list[
+            tuple[Mapping[str, Any], Mapping[str, Any]]
+        ] = []
+
         for field_name, value in self.filtering_fields:
             field_value = getattr(self, field_name)
-            if isinstance(field_value, Filter):
-                if not field_value.model_dump(exclude_none=True, exclude_unset=True):
-                    continue
 
-                filter_conditions.append(
-                    (
-                        {field_name: _odm_operator_transformer["neq"](None)},
-                        {"fetch_links": True, "nesting_depth": nesting_depth},
+            if isinstance(field_value, Filter):
+                conditions.extend(
+                    self._handle_nested_filter(
+                        field_name, 
+                        field_value, 
+                        nesting_depth
                     )
                 )
-                for part, part_options in field_value._get_filter_conditions(nesting_depth=nesting_depth + 1):  # noqa: SLF001
-                    for sub_field_name, sub_value in part.items():
-                        filter_conditions.append(
-                            (
-                                {f"{field_name}.{sub_field_name}": sub_value},
-                                {"fetch_links": True, "nesting_depth": nesting_depth, **part_options},
-                            )
-                        )
-
             elif "__" in field_name:
-                stripped_field_name, operator = field_name.split("__")
-                search_criteria = _odm_operator_transformer[operator](value)
-                filter_conditions.append(({stripped_field_name: search_criteria}))
-            elif field_name == self.Constants.search_field_name and hasattr(self.Constants, "search_model_fields"):
-                search_conditions = [
-                    {search_field: _odm_operator_transformer["ilike"](value)}
-                    for search_field in self.Constants.search_model_fields
-                ]
-                filter_conditions.append(({"$or": search_conditions}))
+                conditions.append(
+                    self._handle_operator_field(field_name, value)
+                )
+            elif self._is_search_field(field_name):
+                conditions.append(self._handle_search_field(value))
             else:
-                filter_conditions.append(({field_name: value}))
-        return filter_conditions
+                conditions.append(({field_name: value}))
+
+        return conditions
+
+    def _handle_nested_filter(
+        self, 
+        field_name: str, 
+        field_value: Filter, 
+        nesting_depth: int,
+    ) -> list[tuple[Mapping[str, Any], Mapping[str, Any]]]:
+        
+        if not field_value.model_dump(
+            exclude_none=True, 
+            exclude_unset=True,
+        ):
+            return []
+
+        nested_conditions = [
+            (
+                {field_name: _odm_operator_transformer["neq"](None)},
+                {"fetch_links": True, "nesting_depth": nesting_depth},
+            )
+        ]
+
+        for part, options in field_value._get_filter_conditions(
+            nesting_depth + 1
+        ): 
+            for sub_field, sub_value in part.items():
+                nested_conditions.append(
+                    (
+                        {f"{field_name}.{sub_field}": sub_value},
+                        {
+                            "fetch_links": True,
+                            "nesting_depth": nesting_depth,
+                            **options,
+                        },
+                    )
+                )
+
+        return nested_conditions
+
+    def _handle_operator_field(
+        self, 
+        field_name: str, 
+        value: Any,
+    ) -> tuple[Mapping[str, Any]]:
+        
+        *path_parts, operator = field_name.split("__")
+        field_path = ".".join(path_parts)
+        return ({field_path: _odm_operator_transformer[operator](value)})
+
+    def _handle_search_field(
+        self, 
+        value: Any,
+    ) -> tuple[Mapping[str, Any]]:
+        
+        search_conditions = [
+            {field: _odm_operator_transformer["ilike"](value)}
+            for field in self.Constants.search_model_fields
+        ]
+        return ({"$or": search_conditions})
+
+    def _is_search_field(
+        self, 
+        field_name: str,
+    ) -> bool:
+        
+        return (
+            field_name == self.Constants.search_field_name
+            and hasattr(self.Constants, "search_model_fields")
+        )
 
     def get(self) -> Any:
         data = self._get_filter_conditions()
