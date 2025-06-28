@@ -4,7 +4,7 @@ from collections.abc import Iterable
 from copy import deepcopy
 from typing import Any, Optional, Union, get_args, get_origin
 
-from fastapi import Depends
+from fastapi import Depends, Querygit 
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, ConfigDict, ValidationError, ValidationInfo, create_model, field_validator
 from pydantic.fields import FieldInfo
@@ -203,9 +203,15 @@ def _list_to_str_fields(Filter: type[BaseFilterModel]):
             # filter for example `int | float | None` is valid type and should not be transformed.
 
         if annotation is list or get_origin(annotation) is list:
-            if isinstance(field_info.default, Iterable):
-                field_info.default = ",".join(field_info.default)
-            ret[name] = (str if f.is_required() else Optional[str], field_info)
+            alias = field_info.alias or name
+            field_info = FieldInfo(
+                default=Query(
+                    None,
+                    alias=alias,
+                    description=field_info.description,
+                )
+            )
+            ret[name] = (Optional[list[str]], field_info)
         else:
             ret[name] = (f.annotation, field_info)
 
